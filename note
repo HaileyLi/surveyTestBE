@@ -1,0 +1,85 @@
+前端：
+react
+	-> react需要在package.json中加proxy 连到express所用的port
+	-> 如果nodejs部署到了aws上 而且使用了自动部署端口就不必要了 因为beanstalk会自动route
+
+
+
+express操作
+///////////////////////////////////////////////////////////////////////////////////////////////////
+npx express-generator		//创建新的node app with express skeleton
+npm install			//常规install
+npm install nodemon		//实时保存更新插件(可能不好使)
+	-> alternative：sudo npm install -g --force nodemon
+npm install mongodb		//mongodb package
+nodemon app.js			//开始express	有时会造成重复引用端口问题
+node app.js			//不使用nodemon 直接开始node程序
+
+需要在程序根目录下创建Procfile  beanstalk会根据procfile内的command执行程序
+Procfile内:  
+web: node app.js
+
+本地react需要发request给host在aws的express 需要在express程序中 npm install cors导入cors这个package
+const cors = require("cors")
+app.use(cors())	//允许跨域请求
+
+每次post request都必须只对应一个response(e.g. res.json)
+多于一个的话会触发cannot set headers after they are sent to the client错误导致beanstalk degraded
+表现形式为beanstalk degrade和前端收到cors error(因为没收到response导致前端以为是cors的问题)
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+aws tech
+///////////////////////////////////////////////////////////////////////////////////////////////////
+aws elastic beanstalk		//用来host web app的简单方式 服务本身基于EC2 只需要给EC2付费（目前免费）
+	-> 创建时设置名字和平台（nodejs）之后beanstalk会自动创建相关环境
+	-> 会自动创建一个EC2
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+上传方式：
+option 1
+code pipeline		//把本地code直接push到aws web services	持续交付
+	-> 创建的时候把source provider设置成对应的git	（git现在连了Brian96）
+	-> repo和branch设置
+	-> skip build setting for now
+	-> deploy到aws beanstalk。 beanstalk上运行的code就会从pipeline upload上来
+
+github -> pipeline -> beanstalk设置关系完成后代码会自动上传
+beanstalk画面可以看到后端对应的url （Surveybackend-env.eba-w27cgeqa.ap-northeast-1.elasticbeanstalk.com）
+可以直接连接
+-------------
+option 2
+在创建beanstalk时直接从本地上传
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+express 在aws上host, web可以正常运行后
+beanstalk -> configuration（配置）-> 安全性(security) -> 获取IAM 实例配置文件
+在aws IAM页内 找到与express app host的服务器id相同的IAM
+附加策略（attach policies） -> 搜索dynamo -> AmazonDynamoDBFullAccess -> 附加策略
+dynamo的策略就被添加到IAM中了 这个IAM可以应用dynamo数据库了
+这时从postman已经可以get到数据了
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+beanstalk web app刚创建的时候是http
+如果需要建立https连接（SSL连接）需要一个domain
+domain可以在route 53购买
+购买完成之后 在ACM中request证书 validation界面选择添加route 53 选择刚刚购买的domain创建记录即可
+等到ACM证书状态变为已颁发
+在beanstalk - configuration - load balancer中添加acm证书
+在route 53已经购买的domain中添加路由（route） 把alias设置为beanstalk的对应url
+然后就可以通过https链接了
+
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+reference
+https://www.youtube.com/watch?v=b0g-FJ5Zbb8		pipeline upload from github to EC2 on beanstalk
+https://www.youtube.com/watch?v=YJvXHr69AHg		express on aws connect to dynamodb
